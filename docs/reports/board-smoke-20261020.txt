@@ -1,0 +1,48 @@
+用户提供的实板终端记录（2026-10-20），仅提取版本与模拟运行输出；非助手直接连接采集。
+vehicle-monitor 0.2.0+c2bfce9ce6e0
+source=c2bfce9ce6e00933c7f11ad05118f0602e396de48334f882df0ba4d3d5cfe8d7
+git_base=ac8c5cc3a00f
+
+SIMULATION fault=speed state=1 severity=1 acknowledged=0 event=1
+SIMULATION fault=liquid state=2 severity=2 acknowledged=0 event=2
+SIMULATION fault=bus state=1 severity=1 acknowledged=0 event=3
+SIMULATION fault=tilt state=2 severity=2 acknowledged=0 event=4
+SIMULATION fault=speed state=3 severity=0 acknowledged=0 event=5
+SIMULATION fault=bus state=3 severity=0 acknowledged=0 event=6
+SIMULATION fault=liquid state=3 severity=0 acknowledged=0 event=7
+SIMULATION fault=speed state=0 severity=0 acknowledged=0 event=8
+SIMULATION fault=bus state=0 severity=0 acknowledged=0 event=9
+SIMULATION fault=liquid state=0 severity=0 acknowledged=0 event=10
+SIMULATION fault=tilt state=3 severity=0 acknowledged=0 event=11
+SIMULATION fault=tilt state=0 severity=0 acknowledged=0 event=12
+SIMULATION fault=speed state=1 severity=1 acknowledged=0 event=13
+SIMULATION fault=bus state=1 severity=1 acknowledged=0 event=14
+SIMULATION fault=liquid state=2 severity=2 acknowledged=0 event=15
+SIMULATION fault=node.2 state=2 severity=2 acknowledged=0 event=16
+SIMULATION fault=tilt state=2 severity=2 acknowledged=0 event=17
+SIMULATION fault=bus state=3 severity=0 acknowledged=0 event=18
+SIMULATION fault=liquid state=3 severity=0 acknowledged=0 event=19
+SIMULATION fault=speed state=3 severity=0 acknowledged=0 event=20
+SIMULATION fault=bus state=0 severity=0 acknowledged=0 event=21
+SIMULATION fault=liquid state=0 severity=0 acknowledged=0 event=22
+SIMULATION fault=speed state=0 severity=0 acknowledged=0 event=23
+SIMULATION fault=tilt state=3 severity=0 acknowledged=0 event=24
+SIMULATION fault=tilt state=0 severity=0 acknowledged=0 event=25
+SIMULATION fault=node.2 state=3 severity=0 acknowledged=0 event=26
+SIMULATION fault=node.2 state=0 severity=0 acknowledged=0 event=27
+SIMULATION fault=speed state=1 severity=1 acknowledged=0 event=28
+SIMULATION fault=liquid state=2 severity=2 acknowledged=0 event=29
+SIMULATION fault=bus state=1 severity=1 acknowledged=0 event=30
+SIMULATION fault=tilt state=2 severity=2 acknowledged=0 event=31
+SIMULATION fault=speed state=3 severity=0 acknowledged=0 event=32
+SIMULATION fault=bus state=3 severity=0 acknowledged=0 event=33
+SIMULATION fault=liquid state=3 severity=0 acknowledged=0 event=34
+SIMULATION fault=speed state=0 severity=0 acknowledged=0 event=35
+SIMULATION fault=bus state=0 severity=0 acknowledged=0 event=36
+SIMULATION fault=liquid state=0 severity=0 acknowledged=0 event=37
+SIMULATION fault=tilt state=3 severity=0 acknowledged=0 event=38
+SIMULATION fault=tilt state=0 severity=0 acknowledged=0 event=39
+SIMULATION stopped; log_dropped=0
+root@MYBOARD-RK3588:/tmp/vehicle-monitor-test#
+root@MYBOARD-RK3588:/tmp/vehicle-monitor-test# echo "退出码=$?"
+退出码=0

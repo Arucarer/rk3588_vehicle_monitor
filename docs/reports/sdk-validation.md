@@ -32,10 +32,14 @@ CONFIG_DHT11、CONFIG_INV_MPU6050_I2C、CONFIG_INV_MPU6050_SPI、CONFIG_CAN_ROCK
 这意味着需要继续核查厂商替代驱动、设备树和真实设备绑定；不能直接认定指定传感器与CAN控制器已可用。
 这里只核对本机kernel/.config，不代表板端运行配置。未修改SDK或生成未经验证的烧写补丁。
 
-## 板端连接结果
+## 首次板端连接结果（历史记录）
 
 执行BatchMode、StrictHostKeyChecking=yes的root@192.168.88.101 SSH连接，返回No route to host。
 本机ens33已具有192.168.88.100/24，但尚无法访问板端。未进入认证阶段，登录用户名亦待核对。
 未传输文件、未执行板端探测、未改网络或启动现有应用。
 
 网络恢复后先执行只读scripts/board_probe.sh，再部署到独立临时目录执行--version及显式仿真，之后逐模块实板适配。
+
+## 后续实板证据
+
+2026-10-20用户已通过SSH上传并在板端执行程序，版本命令及10秒显式模拟通过、退出码0。实测Buildroot2021.11、glibc2.37、Linux5.10.160，PID1为BusyBox；详见[实板冒烟报告](board-smoke-20261020.md)。上述No route to host为首次尝试结果，不代表当前连接仍失败；本轮证据来自用户粘贴的终端输出。
