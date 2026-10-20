@@ -1,4 +1,4 @@
-> 本文基础骨架描述为阶段1记录；阶段2最新实现、接口及限制见[采集诊断报告](reports/stage2-validation.md)。
+> 本文基础骨架描述为阶段1记录；阶段2最新实现、接口及限制见[采集诊断报告](reports/stage2-validation.md)；阶段3见[存储说明](storage.md)。
 
 # 架构与实施清单
 
