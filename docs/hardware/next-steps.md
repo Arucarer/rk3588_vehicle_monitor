@@ -4,7 +4,7 @@
 
 1. 已由用户完成SSH上传、版本执行和10秒模拟冒烟（见reports/board-smoke-20261020.md）。使用更新后的scripts/board_probe.sh继续采集已绑定I²C设备、IIO scale、显示连接器、输入设备名称、实际内核配置与CAN设备树，核对驱动及接口。
 2. 第二轮已确认SH3001双evdev、HDMI当前断开、CAN驱动关闭及三个DT节点禁用、watchdog active/nowayout=1（见reports/board-detail-20261020.md）。对照interfaces.csv及channels.csv完成连接器针脚、SoC复用、电压域、保护、通道量程与参数冻结；确认已采购模块。不得套用旧STM32引脚。
-3. 已完成版本执行和模拟冒烟；用户已运行离屏GUI与文件日志并生成三个文件，末尾健康指标正常（见reports/board-gui-storage-20261020.md）。接下来取回原始JSONL/NOR/PPM核对全程、CRC与图像，再验证部署模板；不占用现有视觉程序显示和摄像头。
+3. 已完成版本执行和模拟冒烟；用户已运行离屏GUI与文件日志并生成三个文件，末尾健康指标正常（见reports/board-gui-storage-20261020.md）。原始JSONL/NOR/PPM已取回并完成指标、133条日志CRC及图像核对；真实以太网TCP约60秒基础联调通过（见reports/board-tcp-20261020.md）。接下来验证中断重连、30分钟通信和部署模板；不占用现有视觉程序显示和摄像头。
 4. 按I2C/IIO、DHT11内核、霍尔计数、ADC/DI、CAN、SPI NOR/MTD、LCD/触摸顺序独立适配，逐项检查断开/恢复/错误状态，配置默认值据实板结果冻结。
 5. 显示后端补充实际SPI屏的fbdev或DRM及evdev输入，核对旋转与触摸坐标；HDMI开发显示不默认替换任务书SPI屏。
 6. 确认真实watchdog设备、nowayout/关闭行为、超时、关键线程门控与复位证据，再启用；当前程序不访问/dev/watchdog。
