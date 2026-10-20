@@ -39,3 +39,13 @@ finally:
         process.kill()
         process.wait()
 print('runtime checks passed')
+
+# End-to-end synthetic snapshot -> concurrent diagnosis -> transition events.
+result = subprocess.run([exe, '--simulate', '--duration', '6'],
+                        capture_output=True, timeout=10)
+assert result.returncode == 0, result.stderr
+for fault in ['speed', 'tilt', 'bus', 'liquid']:
+    assert ('fault=' + fault + ' state=1').encode() in result.stdout or \
+           ('fault=' + fault + ' state=2').encode() in result.stdout, (fault, result.stdout)
+    assert ('fault=' + fault + ' state=3').encode() in result.stdout, (fault, result.stdout)
+print('concurrent synthetic fault and recovery checks passed')

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <map>
 #include <optional>
 #include <string>
 #include <stdexcept>
@@ -12,9 +13,10 @@
 namespace vehicle {
 using Clock = std::chrono::steady_clock;
 struct Measurement { double value = 0; bool valid = false; Clock::time_point sampled{}; std::string unit; std::string source; int error = 0;
- bool fresh(Clock::time_point now, std::chrono::milliseconds ttl) const { return valid && now >= sampled && now-sampled <= ttl; }
+ bool fresh(Clock::time_point now, std::chrono::milliseconds ttl) const { return valid && std::isfinite(value) && now >= sampled && now-sampled <= ttl; }
 };
-struct Snapshot { uint64_t sequence=0; Measurement speed, pitch, roll, temperature, humidity; };
+struct Snapshot { uint64_t sequence=0; Measurement speed, pitch, roll, temperature, humidity, vibration;
+ std::map<std::string,Measurement> analog, digital; };
 class StateStore { mutable std::mutex mutex_; Snapshot state_; public: void publish(Snapshot s); Snapshot snapshot() const; };
 template<class T> class BoundedQueue {
  std::mutex mutex_; std::condition_variable cv_; std::deque<T> queue_; size_t capacity_; bool closed_=false; uint64_t dropped_=0;

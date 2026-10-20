@@ -1,5 +1,7 @@
 #include "vehicle/core.hpp"
 #include "vehicle/health.hpp"
+#include "vehicle/acquisition.hpp"
+#include "vehicle/diagnosis.hpp"
 #include <atomic>
 #include <csignal>
 #include <iostream>
@@ -67,20 +69,38 @@ int main(int argc, char** argv) {
                 try {
                     auto next = vehicle::Clock::now();
                     unsigned tick = 0;
+                    vehicle::AttitudeEstimator attitude;
+                    vehicle::AnalogChannel bus({0,100,1,0,0.25,"V","simulation.bus"});
+                    vehicle::DigitalDebouncer liquid(true,std::chrono::milliseconds(40));
                     while (running) {
                         vehicle::Snapshot s;
                         const auto now = vehicle::Clock::now();
-                        s.speed = {tick++ % 30 < 15 ? 60.0 : 90.0, true, now,
+                        s.speed = {tick % 150 < 75 ? 60.0 : 90.0, true, now,
                                    "km/h", "simulation", 0};
+                        constexpr double pi=3.14159265358979323846;
+                        double tilt=(tick%150>=75 ? 20.0 : 0.0)*pi/180;
+                        auto pose=attitude.update({{-std::sin(tilt),0,std::cos(tilt)}, {0,0,0},now,true});
+                        s.pitch=pose.pitch; s.roll=pose.roll; s.vibration=pose.vibration;
+                        s.pitch.source=s.roll.source=s.vibration.source="simulation.imu";
+                        s.analog["bus"]=bus.update(tick%150<75?24:32,true,now);
+                        s.digital["liquid"]=liquid.update(tick%150>=75,true,now);
+                        s.digital["liquid"].source="simulation.digital";
+                        ++tick;
                         store.publish(s);
                         health.progress("acquisition", now);
-                        next += std::chrono::milliseconds(100);
+                        next += std::chrono::milliseconds(20);
                         std::this_thread::sleep_until(next);
                     }
                 } catch (...) { running = false; }
             });
-            vehicle::ThresholdFault overspeed(options.config.overspeed_kmh,
-                                             options.config.hysteresis_kmh);
+            vehicle::Diagnosis diagnosis;
+            using namespace std::chrono_literals;
+            diagnosis.add({"speed",options.config.overspeed_kmh,options.config.hysteresis_kmh,
+                           false,false,vehicle::Severity::warning,100ms,200ms,
+                           std::chrono::milliseconds(options.config.stale_ms)});
+            diagnosis.add({"tilt",15,2,true,false,vehicle::Severity::fault,100ms,200ms,500ms});
+            diagnosis.add({"bus",30,2,false,false,vehicle::Severity::warning,100ms,200ms,500ms});
+            diagnosis.add({"liquid",0.5,0.1,false,false,vehicle::Severity::fault,100ms,200ms,500ms});
             const auto end = vehicle::Clock::now() + std::chrono::duration<double>(options.seconds);
             bool failed = false;
             while (!stopping && vehicle::Clock::now() < end) {
@@ -89,12 +109,19 @@ int main(int argc, char** argv) {
                     break;
                 }
                 auto s = store.snapshot();
-                if (s.sequence && overspeed.update(s.speed.value,
-                    s.speed.fresh(vehicle::Clock::now(),
-                                  std::chrono::milliseconds(options.config.stale_ms)))) {
-                    logs.push("SIMULATION overspeed state=" +
-                              std::to_string(static_cast<int>(overspeed.state())) +
-                              " sequence=" + std::to_string(s.sequence));
+                if (s.sequence) {
+                    std::map<std::string,vehicle::Measurement> inputs{
+                        {"speed",s.speed},{"tilt",s.pitch},
+                        {"bus",s.analog.at("bus")},{"liquid",s.digital.at("liquid")}};
+                    const auto now=vehicle::Clock::now();
+                    for(const auto& event:diagnosis.evaluate(inputs,now)) {
+                        logs.push("SIMULATION fault="+event.status.id+
+                            " state="+std::to_string(static_cast<int>(event.status.state))+
+                            " event="+std::to_string(event.sequence));
+                    }
+                    // Pure policy output: hardware GPIO is not accessed in simulation.
+                    const auto alarm=vehicle::alarm_output(diagnosis.statuses(),now);
+                    (void)alarm;
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
