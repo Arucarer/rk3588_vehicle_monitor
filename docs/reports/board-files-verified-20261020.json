@@ -1,0 +1,31 @@
+{
+  "evidence": "files copied from user board",
+  "simulation": true,
+  "hardware_acceptance": false,
+  "software_version": "0.2.0+c2bfce9ce6e0",
+  "metrics_count": 28,
+  "metrics_last_ms": 27054,
+  "all_metrics_healthy": true,
+  "rss_min_kb": 1684,
+  "rss_max_kb": 4232,
+  "temperature_min_c": 32.384,
+  "temperature_max_c": 33.307,
+  "critical_dropped_max": 0,
+  "samples_dropped_max": 0,
+  "records": 133,
+  "first_sequence": 1,
+  "last_sequence": 133,
+  "contiguous_sequences": true,
+  "corrupt": 0,
+  "incomplete": 0,
+  "record_types": {
+    "1": 27,
+    "2": 106,
+    "3": 0
+  },
+  "file_sha256": {
+    "vehicle-1792488417.ppm": "67d72a0d9a57d989f5533b723d785fbe9c7fcf7f87a4b6bbf4f019983f8c8370",
+    "vehicle-1792488417.jsonl": "8667362b7bce9a6ab3c4f4dc8bf8d20d67c73d6efd3b7e81fa7309d9abbdaba7",
+    "vehicle-1792488417.nor": "833cd602cd640cc315bb50a54d5d859cdf558fb592f36a810f5093b94ef215cb"
+  }
+}
