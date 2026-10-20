@@ -1,8 +1,48 @@
 # RK3588 车载智能监测与设备健康管理系统
 
-以《基于RK3588B的车载智能监测与设备健康管理系统技术任务书.txt》为需求基线，面向正点原子 ATK-DLRK3588B 的 Linux/C++17 工程。
+## 项目简介
 
-当前交付：六个软件阶段已完成本轮范围，软件版本为 `0.2.0+源码指纹`。具备模拟采集、诊断、日志、CAN/TCP、LVGL、健康监督和部署工具。13项主机测试及60秒组合测试通过，ARM64可交叉编译。实板驱动、实际屏幕/触摸、物理CAN/Flash/看门狗、板端运行和长时验收仍待完成；不能据此判定任务书总体验收通过。见[阶段计划](docs/roadmap.md)与[第6阶段报告](docs/reports/stage6-validation.md)。
+基于正点原子 ATK-DLRK3588B 的车载监测软件原型，围绕车速、姿态、环境及设备状态，实现采集处理、故障诊断、告警、日志、可视化和网络上报。以项目技术任务书为需求基线，采用软件先行、实板逐项验证的方式推进。
+
+## 已完成阶段
+
+| 阶段 | 完成内容 |
+|---|---|
+| 1 工程基础 | 配置、状态快照、有界队列、构建与线程管理 |
+| 2 采集与诊断 | 速度/姿态算法、标定滤波、防抖、多故障状态机与声光策略 |
+| 3 日志存储 | 文件模拟NOR、CRC、循环覆盖、恢复与导出 |
+| 4 CAN与TCP | 节点管理、心跳、状态上报、参数查询与受控修改 |
+| 5 LVGL界面 | 仪表、设备健康、节点、告警历史、参数五页面 |
+| 6 软件集成与部署 | 健康监督、故障注入、指标、打包与应用恢复 |
+
+13项主机测试和ARM64交叉编译通过，实板已验证模拟运行、离屏GUI、文件日志及60秒以太网TCP通信。真实外设及长时验收按[实板清单](docs/hardware/next-steps.md)推进；阶段证据见[阶段计划](docs/roadmap.md)。
+
+## 技术栈
+
+- **平台与语言**：RK3588 / ARM64、Buildroot Linux、C/C++17、POSIX线程。
+- **界面与通信**：LVGL 8.2.0、SDL2（主机可选）、SocketCAN、TCP socket。
+- **构建与工具**：CMake、厂商AArch64工具链、CTest、Python 3、Shell、Git。
+- **数据与可靠性**：状态快照、有界队列、CRC32、循环日志、线程进度监督。
+
+## 项目框架
+
+```text
+include/vehicle/  公共类型与模块接口
+src/             采集算法、诊断、日志、CAN/TCP与运行管理
+gui/             LVGL页面、字体与显示服务
+platform/linux/  Linux硬件适配约定
+config/          业务参数
+protocols/       TCP与CAN协议
+cmake/           交叉编译与版本模板
+scripts/         构建、探测与打包
+deploy/          安装、启动、监督与恢复
+tools/           上位机、信号注入、日志导出与探测工具
+tests/           单元与集成测试
+docs/            架构、阶段报告、硬件与验收资料
+third_party/     固定版本依赖
+```
+
+建议从[项目阅读路线](docs/README.md)开始，再看[运行主线](src/README.md)和各目录README。主体数据流为：**采集 → 状态快照 → 诊断 → 告警/日志/界面**，CAN与TCP状态也进入诊断，网络独立读取快照上报。
 
 ## 本机运行
 
@@ -61,18 +101,7 @@ cmake -S . -B build-rk -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-linux.cmake -DBUILD_
 cmake --build build-rk -j2
 ```
 
-已找到本机厂商SDK并完成交叉编译，可执行 `./scripts/build_rk.sh`。板端SSH当前返回No route to host，板端执行待验证。详见 [SDK验证记录](docs/reports/sdk-validation.md)。部署说明见 [deploy](deploy/README.md)。
-
-## 工程入口
-
-- `include/vehicle/`、`src/`：快照、队列、配置、诊断、协议及模拟运行管理。
-- `platform/linux/`：设备访问合同；`gui/`：LVGL页面、SDL/离屏后端及GUI运行服务。
-- `config/`、`cmake/`、`deploy/`：配置、工具链及部署边界。
-- `protocols/`、`tests/`：已实现的台架协议及主机测试；见[通信联调](docs/communication.md)。
-- `scripts/board_probe.sh`：板端只读环境探测。
-- [可行性报告](docs/feasibility.md)、[架构与待办](docs/architecture.md)、[接口冻结表](docs/hardware/interfaces.csv)、[验收矩阵](docs/acceptance.csv)。
-
-`moni_traffic/`为保留的STM32历史参考，根构建不使用它。旧文档中的供电、引脚、怠速与可靠性描述不得作为本项目已验证结论。旧树LVGL实际为8.3.11，与任务书8.2不一致。
+已使用本机厂商SDK完成交叉编译与板端模拟运行，可执行 `./scripts/build_rk.sh`。详见 [SDK验证记录](docs/reports/sdk-validation.md)。部署说明见 [deploy](deploy/README.md)。
 
 ## Git 迁移
 

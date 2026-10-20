@@ -14,3 +14,7 @@
 | watchdog | Linux watchdog ioctl | 关键线程进度联锁、timeout/nowayout行为实测 |
 
 本目录保留硬件适配合同；第4阶段已在src/can_node.cpp实现SocketCAN用户态适配，其他真实板级设备尚未适配。SocketCAN物理链路未验证，详见docs/reports/stage4-validation.md。
+
+## 接入顺序
+
+先在 [硬件表](../../docs/hardware/README.md)冻结接口，再实现设备读取与资源释放，交给采集算法转换，最后发布快照。对照 [公共接口](../../include/vehicle/README.md)保留单位、来源、错误码与有效期；用断开、超时和恢复场景验证，不只测试正常读数。

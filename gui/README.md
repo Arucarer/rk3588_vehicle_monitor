@@ -54,3 +54,7 @@ CMake默认`VEHICLE_BUILD_GUI=ON`，主机自动检测SDL2。纯业务构建可�
 ## 尚未验收
 
 没有SPI屏控制器、触摸坐标/驱动、旋转、电平、DRM/fbdev flush的实板验证；无30分钟真实触摸测试、实屏10Hz测量或24小时可靠性结论。SDL/离屏验证不能替代任务书第6.9项实屏验收。
+
+## 源码阅读
+
+`include/vehicle/gui.hpp`定义GUI快照与交互回调；`service.cpp`管理GUI线程、设置队列和进度；`window.cpp`创建页面、渲染及SDL/离屏输入输出；`lv_conf.h`固定LVGL配置，`fonts/`保存裁剪字体与许可。主线程发布GuiStateStore，GUI读取显示，操作通过回调或队列回到业务。接着看 [核心运行主线](../src/README.md)。

@@ -63,3 +63,7 @@ sh PACKAGE/deploy/install.sh PACKAGE /opt/vehicle-monitor
 只安装与实际init匹配的一种模板，再在目标板验证开机启动、停止及重启；本阶段未修改本机或开发板的启动项。
 
 板端脚本需要POSIX sh、Linux /proc、date、stat -c、readlink、ln -sfn、sha256sum、nohup、cp/mv等常见BusyBox/GNU工具。Python打包工具和测试仅要求开发主机Python3，不要求板端安装Python。ARM64当前GUI只有离屏后端，实际SPI/DRM/fbdev与触摸仍待适配。
+
+## 源码阅读
+
+`install.sh`负责校验与版本安装，`vmctl`负责启动、停止、监督和应用回滚，`simulation.args`提供仿真参数模板，`init/`提供两种启动模板。顺序是 [构建打包](../scripts/README.md) → 安装 → 显式启用 → 启动 → 核对指标 → 停止或恢复；安装成功不代表开机启动已验收。

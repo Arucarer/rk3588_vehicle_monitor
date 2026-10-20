@@ -68,3 +68,7 @@ SocketCAN服务默认1秒发送心跳，20ms循环接收及检查超时，每轮
 C++ NodeManager支持构造白名单/超时；当前应用演示固定节点1、2、超时3秒、主控127，后续配置文件整合再扩展。这些默认值在联调双方必须一致。
 
 `--can-simulate`向NodeManager注入双节点心跳，节点2在第3..7秒暂停，从最后有效心跳后3秒离线；此模式不使用SocketCAN。`--can-interface IFACE`则实际打开指定接口，两种方式互斥。当前采集仍必须显式`--simulate`，即传感器模拟与真实CAN可以混合，状态会分别标识来源。
+
+## 与代码对应
+
+TCP帧编解码在 `src/core.cpp`，命令与参数处理在 `src/commands.cpp`，连接及ACK管理在 `src/network.cpp`；CAN布局、节点超时与SocketCAN服务在 `src/can_node.cpp`。先读本文件的布局，再用 [联调工具](../tools/README.md)观察数据，最后对照 [通信测试](../tests/README.md)验证异常路径。
