@@ -1,9 +1,11 @@
 #include "vehicle/core.hpp"
+#include "vehicle/health.hpp"
 #include <iostream>
 #include <stdexcept>
 using namespace vehicle;
 void check(bool b){if(!b)throw std::runtime_error("check failed");}
 int main(){try{
+ HealthMonitor health;auto start=Clock::now();health.add("sensor",std::chrono::milliseconds(100),start);check(health.stalled(start).empty());check(health.stalled(start+std::chrono::milliseconds(101)).size()==1);health.progress("sensor",start+std::chrono::milliseconds(101));check(health.stalled(start+std::chrono::milliseconds(102)).empty());
  Config c;check(std::abs(speed_kmh(10,1,c)-72)<1e-9);bool rejected=false;try{speed_kmh(1,0,c);}catch(...){rejected=true;}check(rejected);
  ThresholdFault f(80,5);check(f.update(90,true));f.acknowledge();check(f.state()==FaultState::warning);check(!f.update(78,true));check(f.state()==FaultState::warning);check(f.update(75,true));check(f.state()==FaultState::recovered);check(f.update(0,false));check(f.state()==FaultState::fault);
  const std::string vector="123456789";check(crc32(reinterpret_cast<const uint8_t*>(vector.data()),vector.size())==0xcbf43926);

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <stdexcept>
 #include <vector>
 namespace vehicle {
 using Clock = std::chrono::steady_clock;
