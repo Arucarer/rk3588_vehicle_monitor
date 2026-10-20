@@ -81,7 +81,7 @@ bool SocketCan::send(const CanMessage& message) {
 }
 CanService::CanService(std::string interface):interface_(std::move(interface)) {
     if(interface_.empty()||interface_.size()>=IFNAMSIZ)throw std::invalid_argument("invalid CAN interface");
-    worker_=std::thread(&CanService::run,this);
+    progress_.beat();worker_=std::thread(&CanService::run,this);
 }
 CanService::~CanService(){stop_=true;if(worker_.joinable())worker_.join();}
 CanServiceStatus CanService::status()const{std::lock_guard<std::mutex> lock(mutex_);return status_;}
@@ -89,6 +89,7 @@ void CanService::run()noexcept {
     std::unique_ptr<SocketCan> socket;
     auto retry=Clock::now(),next_heartbeat=retry;uint16_t sequence=0;
     while(!stop_) {
+        progress_.beat();
         auto now=Clock::now();
         try {
             if(!socket && now>=retry) {

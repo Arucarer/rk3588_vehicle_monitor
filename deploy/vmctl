@@ -1,0 +1,97 @@
+#!/bin/sh
+# POSIX shell controller. All default executions are visibly simulation-only.
+set -eu
+umask 077
+VM_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+VM_PID="$VM_ROOT/var/supervisor.pid"
+mkdir -p "$VM_ROOT/var"
+alive() {
+    [ -r "$VM_PID" ] || return 1
+    read -r vm_pid < "$VM_PID"
+    case "$vm_pid" in ''|*[!0-9]*) return 1;; esac
+    [ -r "/proc/$vm_pid/cmdline" ] || return 1
+    vm_command=$(tr '\000' ' ' < "/proc/$vm_pid/cmdline")
+    case "$vm_command" in *"$VM_ROOT/vmctl supervise"*) kill -0 "$vm_pid" 2>/dev/null;; *) return 1;; esac
+}
+case "${1:-status}" in
+status)
+    if alive; then printf 'SIMULATION running pid=%s\n' "$vm_pid"; else printf 'stopped\n'; exit 1; fi;;
+start)
+    if alive; then printf 'already running\n'; exit 0; fi
+    [ -f "$VM_ROOT/etc/enable-simulation" ] || { printf 'Explicit simulation opt-in required: %s/etc/enable-simulation\n' "$VM_ROOT" >&2; exit 1; }
+    [ -x "$VM_ROOT/current/bin/vehicle-monitor" ] || exit 1
+    nohup "$VM_ROOT/vmctl" supervise > "$VM_ROOT/var/supervisor.log" 2>&1 &
+    vm_pid=$!
+    printf '%s\n' "$vm_pid" > "$VM_PID"
+    printf 'SIMULATION supervisor started pid=%s\n' "$vm_pid";;
+stop)
+    if alive; then
+        kill -TERM "$vm_pid"
+        vm_n=0
+        while alive && [ "$vm_n" -lt 8 ]; do sleep 1; vm_n=$((vm_n+1)); done
+        if alive; then printf 'supervisor did not stop\n' >&2; exit 1; fi
+    fi
+    rm -f "$VM_PID";;
+run)
+    [ -f "$VM_ROOT/etc/enable-simulation" ] || { printf 'simulation is not enabled\n' >&2; exit 1; }
+    set --
+    while IFS= read -r vm_arg || [ -n "$vm_arg" ]; do
+        [ -n "$vm_arg" ] || continue
+        set -- "$@" "$vm_arg"
+    done < "$VM_ROOT/etc/arguments"
+    VM_METRICS=${VM_METRICS:-"$VM_ROOT/var/metrics-$(date +%s)-$$.jsonl"}
+    exec "$VM_ROOT/current/bin/vehicle-monitor" "$@" --config "$VM_ROOT/etc/vehicle.conf" --log-file "$VM_ROOT/var/events.nor" --metrics-file "$VM_METRICS";;
+supervise)
+    if alive && [ "$vm_pid" != "$$" ]; then printf 'another supervisor is running\n' >&2; exit 1; fi
+    printf '%s\n' "$$" > "$VM_PID"
+    vm_child=''
+    vm_stopping=0
+    trap 'vm_stopping=1; if [ -n "$vm_child" ]; then kill -TERM "$vm_child" 2>/dev/null || true; fi' TERM INT
+    vm_attempt=0
+    while [ "$vm_attempt" -lt 3 ] && [ "$vm_stopping" -eq 0 ]; do
+        vm_attempt=$((vm_attempt+1))
+        VM_METRICS="$VM_ROOT/var/metrics-$(date +%s)-$$-$vm_attempt.jsonl"
+        export VM_METRICS
+        "$VM_ROOT/vmctl" run >> "$VM_ROOT/var/application.log" 2>&1 &
+        vm_child=$!
+        vm_started=$(date +%s)
+        while kill -0 "$vm_child" 2>/dev/null; do
+            sleep 1
+            if [ "$vm_stopping" -eq 1 ]; then
+                kill -TERM "$vm_child" 2>/dev/null || true
+                vm_grace=0
+                while kill -0 "$vm_child" 2>/dev/null && [ "$vm_grace" -lt 5 ]; do sleep 1; vm_grace=$((vm_grace+1)); done
+                kill -KILL "$vm_child" 2>/dev/null || true
+                break
+            fi
+            vm_now=$(date +%s)
+            vm_updated=$vm_started
+            if [ -f "$VM_METRICS" ]; then vm_updated=$(stat -c %Y "$VM_METRICS"); fi
+            if [ $((vm_now-vm_updated)) -gt 10 ]; then
+                printf 'metrics heartbeat stalled; terminate child %s\n' "$vm_child" >&2
+                kill -TERM "$vm_child" 2>/dev/null || true
+                sleep 2
+                kill -KILL "$vm_child" 2>/dev/null || true
+                break
+            fi
+        done
+        vm_rc=0
+        wait "$vm_child" || vm_rc=$?
+        vm_child=''
+        [ "$vm_stopping" -eq 0 ] || break
+        [ "$vm_rc" -ne 0 ] || break
+        printf 'application failed status=%s attempt=%s/3\n' "$vm_rc" "$vm_attempt" >&2
+        sleep "$vm_attempt"
+    done
+    rm -f "$VM_PID"
+    [ "$vm_stopping" -eq 1 ] || [ "${vm_rc:-1}" -eq 0 ];;
+rollback)
+    if alive; then printf 'stop before rollback\n' >&2; exit 1; fi
+    vm_previous=$(readlink "$VM_ROOT/previous")
+    vm_current=$(readlink "$VM_ROOT/current")
+    [ -x "$VM_ROOT/$vm_previous/bin/vehicle-monitor" ] || exit 1
+    ln -sfn "$vm_previous" "$VM_ROOT/current"
+    ln -sfn "$vm_current" "$VM_ROOT/previous"
+    printf 'rolled back application; persistent configuration/data retained\n';;
+*) printf 'usage: vmctl start|stop|status|run|rollback\n' >&2; exit 1;;
+esac

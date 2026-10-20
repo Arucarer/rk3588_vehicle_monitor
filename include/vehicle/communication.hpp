@@ -1,5 +1,6 @@
 #pragma once
 #include "vehicle/core.hpp"
+#include "vehicle/runtime.hpp"
 #include <array>
 #include <atomic>
 #include <functional>
@@ -48,6 +49,7 @@ public:
 struct CanServiceStatus { bool connected=false; uint64_t received=0, errors=0, reconnects=0; };
 class CanService {
     NodeManager nodes_;
+    WorkerProgress progress_;
     std::string interface_;
     std::atomic<bool> stop_{false};
     mutable std::mutex mutex_;
@@ -59,6 +61,7 @@ public:
     ~CanService();
     std::vector<NodeStatus> nodes() const {return nodes_.snapshot();}
     CanServiceStatus status() const;
+    bool healthy()const{return progress_.healthy(std::chrono::milliseconds(2000));}
 };
 std::string config_text(const Config& config);
 struct ParameterSnapshot { Config config; uint64_t revision=0; };
@@ -94,6 +97,8 @@ struct NetworkStatus {
 };
 class TcpClient {
     NetworkConfig config_;
+    WorkerProgress progress_;
+    std::shared_ptr<FaultInjection> injection_;
     ParameterStore& parameters_;
     std::function<std::string()> state_;
     std::atomic<bool> stop_{false};
@@ -102,9 +107,10 @@ class TcpClient {
     std::thread worker_;
     void run() noexcept;
 public:
-    TcpClient(NetworkConfig config,ParameterStore& parameters,std::function<std::string()> state);
+    TcpClient(NetworkConfig config,ParameterStore& parameters,std::function<std::string()> state,std::shared_ptr<FaultInjection> injection={});
     ~TcpClient();
     NetworkStatus status() const;
+    bool healthy()const{return progress_.healthy(std::chrono::milliseconds(2000));}
 };
 std::string snapshot_text(const Snapshot& state,Clock::time_point now,
                           std::chrono::milliseconds ttl);

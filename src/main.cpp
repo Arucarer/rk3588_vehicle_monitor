@@ -4,6 +4,8 @@
 #include "vehicle/diagnosis.hpp"
 #include "vehicle/storage.hpp"
 #include "vehicle/communication.hpp"
+#include "vehicle/runtime.hpp"
+#include "vehicle/version.hpp"
 #ifdef VEHICLE_BUILD_GUI
 #include "vehicle/gui.hpp"
 #endif
@@ -32,7 +34,8 @@ struct Options {
     std::string config_path, can_interface;
     bool can_simulate=false, allow_remote_set=false;
     bool gui=false, gui_headless=false;
-    std::string gui_capture;
+    std::string gui_capture, metrics_file;
+    std::shared_ptr<vehicle::FaultInjection> injection;
     std::optional<vehicle::NetworkConfig> network;
 };
 
@@ -43,6 +46,8 @@ Options parse(int argc, char** argv) {
         if (arg == "--simulate") options.simulation = true;
         else if (arg == "--version") options.version = true;
         else if (arg == "--help") options.help = true;
+        else if (arg == "--metrics-file" && i+1<argc) options.metrics_file=argv[++i];
+        else if (arg == "--inject" && i+1<argc) options.injection=vehicle::FaultInjection::parse(argv[++i]);
         else if (arg == "--gui") options.gui=true;
         else if (arg == "--gui-headless") {options.gui=true;options.gui_headless=true;}
         else if (arg == "--gui-capture" && i+1<argc) options.gui_capture=argv[++i];
@@ -83,6 +88,12 @@ Options parse(int argc, char** argv) {
 #ifndef VEHICLE_BUILD_GUI
     if(options.gui)throw std::invalid_argument("GUI was disabled at build time");
 #endif
+    if(options.injection) {
+        const auto& name=options.injection->name;
+        if(name=="network-stall"&&!options.network)throw std::invalid_argument("network-stall requires --tcp");
+        if((name=="storage-stall"||name=="storage-fail")&&options.log_file.empty())throw std::invalid_argument("storage injection requires --log-file");
+        if(name=="gui-stall"&&!options.gui)throw std::invalid_argument("gui-stall requires GUI");
+    }
     options.config.validate();
     return options;
 }
@@ -133,10 +144,11 @@ int main(int argc, char** argv) {
                          "  [--tcp IPv4:port] [--allow-remote-set --config path]\n"
                          "  [--can-simulate | --can-interface can0]\n"
                          "  [--gui | --gui-headless] [--gui-capture NEW_PPM]\n"
+                         "  [--metrics-file NEW_JSONL] [--inject NAME:AFTER_MS]\n"
                          "vehicle-monitor --version\n";
             return 0;
         }
-        if (options.version) { std::cout << "vehicle-monitor 0.1.0\n"; return 0; }
+        if (options.version) { std::cout << "vehicle-monitor " << vehicle::software_version << " source=" << vehicle::source_fingerprint << " git_base=" << vehicle::build_git_revision << "\n"; return 0; }
         if (!options.simulation)
             throw std::runtime_error("hardware backend not commissioned; use --simulate explicitly");
         std::signal(SIGINT, stop);
@@ -158,7 +170,7 @@ int main(int argc, char** argv) {
             auto recovery=persistent->recovery_stats();
             std::cout<<"SIMULATION log recovered="<<recovery.valid<<" corrupt="<<recovery.corrupt
                      <<" incomplete="<<recovery.incomplete<<'\n';
-            log_service=std::make_unique<vehicle::LogService>(*persistent);
+            log_service=std::make_unique<vehicle::LogService>(*persistent,128,64,options.injection);
         }
         vehicle::StateStore store, runtime_store;
         vehicle::ParameterStore parameters(options.config,options.allow_remote_set?options.config_path:"");
@@ -179,19 +191,20 @@ int main(int argc, char** argv) {
                     ",state:"+std::to_string(node.state)+",sequence:"+std::to_string(node.sequence)+"\n";
             }
             return text+"parameters\n"+vehicle::config_text(current);
-        });
+        },options.injection);
 #ifdef VEHICLE_BUILD_GUI
         vehicle::GuiStateStore gui_states;
         vehicle::BoundedQueue<bool> gui_acknowledgments(8);
         std::unique_ptr<vehicle::GuiService> gui;
         if(options.gui)gui=std::make_unique<vehicle::GuiService>(gui_states,parameters,
-            [&]{return gui_acknowledgments.push(true);},options.gui_headless,options.gui_capture);
+            [&]{return gui_acknowledgments.push(true);},options.gui_headless,options.gui_capture,options.injection);
         std::deque<vehicle::LogRecord> live_history;
 #endif
         vehicle::BoundedQueue<std::string> logs(128);
-        vehicle::HealthMonitor health;
-        health.add("acquisition", std::chrono::milliseconds(500), vehicle::Clock::now());
-        std::atomic<bool> running{true};
+        std::atomic<bool> running{true},fatal{false};
+        std::atomic<uint64_t> active_faults{0};
+        vehicle::WorkerProgress acquisition_progress,diagnosis_progress;
+        acquisition_progress.beat();diagnosis_progress.beat();
         std::thread logger([&] {
             while (auto line = logs.pop()) std::cout << *line << std::endl;
         });
@@ -205,6 +218,8 @@ int main(int argc, char** argv) {
                     vehicle::AnalogChannel bus({0,100,1,0,0.25,"V","simulation.bus"});
                     vehicle::DigitalDebouncer liquid(true,std::chrono::milliseconds(40));
                     while (running) {
+                        while(options.injection&&options.injection->active("acquisition-stall")&&running)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                        if(!running)break;
                         vehicle::Snapshot s;
                         const auto now = vehicle::Clock::now();
                         s.speed = {tick % 150 < 75 ? 60.0 : 90.0, true, now,
@@ -217,9 +232,10 @@ int main(int argc, char** argv) {
                         s.analog["bus"]=bus.update(tick%150<75?24:32,true,now);
                         s.digital["liquid"]=liquid.update(tick%150>=75,true,now);
                         s.digital["liquid"].source="simulation.digital";
+                        if(options.injection&&options.injection->active("sensor-dropout"))s.pitch.valid=s.roll.valid=s.speed.valid=false;
                         ++tick;
                         store.publish(s);
-                        health.progress("acquisition", now);
+                        acquisition_progress.beat();
                         next += std::chrono::milliseconds(20);
                         std::this_thread::sleep_until(next);
                     }
@@ -241,9 +257,24 @@ int main(int argc, char** argv) {
             auto simulation_start=vehicle::Clock::now(),next_can=simulation_start;
             const auto end = vehicle::Clock::now() + std::chrono::duration<double>(options.seconds);
             bool failed = false;
+            auto supervisor=std::make_unique<vehicle::RuntimeSupervisor>([&] {
+                vehicle::RuntimeMetrics metrics;metrics.snapshots=store.snapshot().sequence;metrics.faults=active_faults;
+                if(!acquisition_progress.healthy(500ms))metrics.unhealthy.push_back("acquisition");
+                if(!diagnosis_progress.healthy(500ms))metrics.unhealthy.push_back("diagnosis");
+                if(log_service){auto drops=log_service->dropped();metrics.log_pending=log_service->pending();metrics.log_critical_dropped=drops.first;metrics.log_sample_dropped=drops.second;
+                    if(!log_service->healthy())metrics.unhealthy.push_back("storage");}
+                if(network){metrics.network_connected=network->status().connected;if(!network->healthy())metrics.unhealthy.push_back("network");}
+                if(can&&!can->healthy())metrics.unhealthy.push_back("can");
+#ifdef VEHICLE_BUILD_GUI
+                if(gui&&!gui->healthy())metrics.unhealthy.push_back("gui");
+#endif
+                return metrics;
+            },[&]{fatal=true;running=false;},options.metrics_file);
             auto next_sample=vehicle::Clock::now();
             while (!stopping && vehicle::Clock::now() < end) {
-                if (!running || (log_service && log_service->failed()) || !health.stalled(vehicle::Clock::now()).empty()) {
+                while(options.injection&&options.injection->active("diagnosis-stall")&&!fatal&&!stopping)std::this_thread::sleep_for(10ms);
+                if(fatal){failed=true;break;}
+                if (!running || (log_service && log_service->failed())) {
                     failed = true;
                     break;
                 }
@@ -329,9 +360,12 @@ int main(int argc, char** argv) {
                     }
 #endif
                 }
+                uint64_t count=0;for(const auto& fault:diagnosis.statuses())if(fault.state==vehicle::FaultState::warning||fault.state==vehicle::FaultState::fault)++count;
+                active_faults=count;diagnosis_progress.beat();
                 if(failed)break;
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
+            failed=failed||supervisor->tripped()||fatal.load();supervisor.reset();
 #ifdef VEHICLE_BUILD_GUI
             if(gui){gui->close();failed=failed||gui->failed();gui.reset();}
 #endif

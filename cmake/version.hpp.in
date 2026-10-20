@@ -1,0 +1,6 @@
+#pragma once
+namespace vehicle {
+inline constexpr const char* software_version="@PROJECT_VERSION@+@VEHICLE_SOURCE_SHORT@";
+inline constexpr const char* source_fingerprint="@VEHICLE_SOURCE_HASH@";
+inline constexpr const char* build_git_revision="@VEHICLE_GIT_REVISION@";
+}

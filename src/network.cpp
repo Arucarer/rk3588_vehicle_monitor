@@ -22,8 +22,8 @@ void NetworkConfig::validate()const {
        report.count()>60000||heartbeat.count()>60000||ack_timeout.count()>60000||reconnect.count()>5000)
         throw std::invalid_argument("invalid TCP configuration (numeric IPv4 required)");
 }
-TcpClient::TcpClient(NetworkConfig config,ParameterStore& p,std::function<std::string()> state):config_(std::move(config)),parameters_(p),state_(std::move(state)) {
-    config_.validate();worker_=std::thread(&TcpClient::run,this);
+TcpClient::TcpClient(NetworkConfig config,ParameterStore& p,std::function<std::string()> state,std::shared_ptr<FaultInjection> injection):config_(std::move(config)),injection_(std::move(injection)),parameters_(p),state_(std::move(state)) {
+    config_.validate();progress_.beat();worker_=std::thread(&TcpClient::run,this);
 }
 TcpClient::~TcpClient(){stop_=true;if(worker_.joinable())worker_.join();}
 NetworkStatus TcpClient::status()const{std::lock_guard<std::mutex> lock(mutex_);return status_;}
@@ -31,6 +31,8 @@ void TcpClient::run()noexcept {
     uint32_t sequence=1;
     auto retry=Clock::now();
     while(!stop_) {
+        while(injection_&&injection_->active("network-stall")&&!stop_)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        progress_.beat();
         if(Clock::now()<retry){std::this_thread::sleep_for(std::chrono::milliseconds(20));continue;}
         try {
             Descriptor socket;
@@ -43,6 +45,7 @@ void TcpClient::run()noexcept {
             if(result<0) {
                 auto deadline=Clock::now()+std::chrono::seconds(3);bool connected=false;
                 while(!stop_ && Clock::now()<deadline) {
+                    progress_.beat();
                     pollfd event{socket.fd,POLLOUT,0};int ready=poll(&event,1,50);
                     if(ready<0&&errno==EINTR)continue;
                     if(ready<0)throw std::runtime_error("TCP connect poll failed");
@@ -67,6 +70,8 @@ void TcpClient::run()noexcept {
                 if(track)pending.emplace(frame.sequence,PendingAck{frame.command,Clock::now()+config_.ack_timeout});
             };
             while(!stop_) {
+                while(injection_&&injection_->active("network-stall")&&!stop_)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                progress_.beat();
                 auto now=Clock::now();
                 if(now>=next_heartbeat){enqueue({0x01,sequence++,{}},true);next_heartbeat=now+config_.heartbeat;}
                 if(now>=next_report) {

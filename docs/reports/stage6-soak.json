@@ -1,0 +1,27 @@
+{
+  "simulation": true,
+  "hardware_acceptance": false,
+  "elapsed_seconds": 60.31662155200047,
+  "requested_seconds": 60,
+  "exit_code": 0,
+  "software_version": "0.2.0+c2bfce9ce6e0",
+  "metrics_samples": 60,
+  "all_health_checks_passed": true,
+  "rss_min_kb": 8840,
+  "rss_max_kb": 9100,
+  "rss_growth_kb": 260,
+  "cpu_percent_one_core": 2.4121394112660575,
+  "log_pending_max": 0,
+  "critical_dropped": 0,
+  "samples_dropped": 0,
+  "tcp": {
+    "heartbeat": 60,
+    "status": 60,
+    "connections": 1
+  },
+  "retained_records": 128,
+  "first_sequence": 699,
+  "last_sequence": 826,
+  "export_exit_code": 0,
+  "passed": true
+}

@@ -2,7 +2,7 @@
 
 以《基于RK3588B的车载智能监测与设备健康管理系统技术任务书.txt》为需求基线，面向正点原子 ATK-DLRK3588B 的 Linux/C++17 工程。
 
-当前交付：完成软件阶段1（工程基础）、阶段2（采集算法和多故障诊断）、阶段3（循环日志和导出）、阶段4（CAN节点管理和TCP通信）与阶段5（LVGL界面），程序版本v0.1.0。详见[阶段计划](docs/roadmap.md)与[阶段2验证](docs/reports/stage2-validation.md)。实板驱动、实际屏幕/触摸、CAN物理链路与板端TCP验证、W25Q128实板持久化及完整系统验收尚未完成。仿真不能替代硬件验收。
+当前交付：六个软件阶段已完成本轮范围，软件版本为 `0.2.0+源码指纹`。具备模拟采集、诊断、日志、CAN/TCP、LVGL、健康监督和部署工具。13项主机测试及60秒组合测试通过，ARM64可交叉编译。实板驱动、实际屏幕/触摸、物理CAN/Flash/看门狗、板端运行和长时验收仍待完成；不能据此判定任务书总体验收通过。见[阶段计划](docs/roadmap.md)与[第6阶段报告](docs/reports/stage6-validation.md)。
 
 ## 本机运行
 
@@ -13,6 +13,18 @@
 ```
 
 Ctrl+C/SIGTERM 可优雅退出。演示产生交替60/90 km/h的明确模拟数据，新增合成姿态、母线与液位异常场景；温湿度保持无效。不指定日志文件时只输出stdout；使用 `--log-file` 可启用文件模拟NOR循环日志，不代表已写入Flash。关键与普通队列分别有界，关键溢出或写失败使程序非零退出。详见[日志运行与导出](docs/storage.md)。
+
+## 集成测试与交付
+
+```sh
+# 指标路径必须为新文件
+./build/vehicle-monitor --simulate --can-simulate --gui-headless --duration 60 --metrics-file /tmp/vehicle-metrics.jsonl
+# 可扩展至1800秒或86400秒；当前实际只完成60秒主机组合测试
+python3 tools/soak_test.py --duration 60 --output out/my-soak
+python3 scripts/package.py --build-dir build-rk --output-dir out --label software
+```
+
+[部署与应用回滚](deploy/README.md)包含校验安装、显式仿真开关、启动/停止、故障重启以及两种init模板；工具不会自动修改本机或板端启动项。
 
 ## 图形界面
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "vehicle/core.hpp"
+#include "vehicle/runtime.hpp"
 #include "vehicle/diagnosis.hpp"
 #include "vehicle/communication.hpp"
 #include "vehicle/storage.hpp"
@@ -46,6 +47,8 @@ public:
 };
 class GuiService {
     GuiStateStore& states_;
+    WorkerProgress progress_,settings_progress_;
+    std::shared_ptr<FaultInjection> injection_;
     ParameterStore& parameters_;
     std::function<bool()> acknowledge_;
     bool headless_;
@@ -58,10 +61,11 @@ class GuiService {
     void run()noexcept;
 public:
     GuiService(GuiStateStore& states,ParameterStore& parameters,std::function<bool()> acknowledge,
-               bool headless,std::string capture={});
+               bool headless,std::string capture={},std::shared_ptr<FaultInjection> injection={});
     ~GuiService();
     void close();
     bool failed()const{return failed_;}
     bool finished()const{return finished_;}
+    bool healthy()const{return !failed_&&progress_.healthy(std::chrono::milliseconds(2000))&&settings_progress_.healthy(std::chrono::milliseconds(2000));}
 };
 }

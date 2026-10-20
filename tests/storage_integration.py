@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert any(r['type'] == 2 and 'fault=speed' in r['payload'] for r in first)
     assert any(r['type'] == 1 and 'unit=km/h' in r['payload'] for r in first)
     assert all(r['boot_id'] and r['config_version'].startswith('v1-crc32:') for r in first)
-    assert all(not r['clock_synchronized'] and r['software_version'] == '0.1.0' for r in first)
+    assert all(not r['clock_synchronized'] and r['software_version'].startswith('0.2.0+') for r in first)
     last = first[-1]['sequence']
     second = collect(0.3, root / 'second.jsonl')
     assert second[-1]['sequence'] > last

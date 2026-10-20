@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0+c2bfce9ce6e0",
+  "source_sha256": "c2bfce9ce6e00933c7f11ad05118f0602e396de48334f882df0ba4d3d5cfe8d7",
+  "git_base": "ac8c5cc3a00f",
+  "architecture": "aarch64",
+  "release_id": "0.2.0+c2bfce9ce6e0-software",
+  "simulation_only": true,
+  "hardware_acceptance": false,
+  "archive_sha256": "ccab3128ab2e9a4626885e1b4330607e7b812078e1ddeadbfd43dbbbd3052d47",
+  "binaries": {
+    "vehicle-log-export": "28e55fe84cfd77fe767684b6c71ff395fde832dba7bf9df492a63597d6457355",
+    "vehicle-monitor": "f84691d5f5d697528b1e924c40ee15bc2817dfcb004b427b387883e3e1d27d52"
+  }
+}

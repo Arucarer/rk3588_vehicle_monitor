@@ -1,5 +1,7 @@
 #pragma once
 #include "vehicle/core.hpp"
+#include "vehicle/runtime.hpp"
+#include "vehicle/version.hpp"
 #include <memory>
 #include <atomic>
 #include <thread>
@@ -34,7 +36,7 @@ struct LogRecord {
     uint64_t sequence=0, monotonic_ns=0, utc_ms=0;
     bool clock_synchronized=false;
     RecordType type=RecordType::diagnostic;
-    std::string boot_id, software_version="0.1.0", config_version, payload;
+    std::string boot_id, software_version=vehicle::software_version, config_version, payload;
 };
 struct RecoveryStats { size_t valid=0, incomplete=0, corrupt=0; };
 class CircularLog {
@@ -56,6 +58,9 @@ public:
 void export_jsonl(const std::vector<LogRecord>& records,const std::string& path);
 class LogService {
     CircularLog& log_;
+    WorkerProgress progress_;
+    std::shared_ptr<FaultInjection> injection_;
+    std::atomic<bool> stop_wait_{false};
     std::mutex mutex_;
     std::condition_variable cv_;
     std::deque<LogRecord> critical_, samples_, recent_;
@@ -66,11 +71,13 @@ class LogService {
     std::thread worker_;
     void run() noexcept;
 public:
-    LogService(CircularLog& log,size_t critical_capacity=128,size_t sample_capacity=64);
+    LogService(CircularLog& log,size_t critical_capacity=128,size_t sample_capacity=64,std::shared_ptr<FaultInjection> injection={});
     ~LogService();
     bool submit(LogRecord record,bool critical);
     void close();
     bool failed() const { return failed_; }
+    bool healthy()const{return !failed_&&progress_.healthy(std::chrono::milliseconds(2000));}
+    size_t pending();
     std::pair<uint64_t,uint64_t> dropped();
     std::vector<LogRecord> history();
 };

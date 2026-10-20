@@ -194,7 +194,7 @@ void export_jsonl(const std::vector<LogRecord>& records,const std::string& path)
         require(fdatasync(fd)==0,"export sync failed");::close(fd);
     } catch(...) {::close(fd);throw;}
 }
-LogService::LogService(CircularLog& log,size_t critical,size_t samples):log_(log),critical_capacity_(critical),sample_capacity_(samples) {
+LogService::LogService(CircularLog& log,size_t critical,size_t samples,std::shared_ptr<FaultInjection> injection):log_(log),injection_(std::move(injection)),critical_capacity_(critical),sample_capacity_(samples) {
     require(critical>0 && samples>0,"zero log queue capacity");
     auto initial=log.records();
     auto begin=initial.size()>256?initial.end()-256:initial.begin();
@@ -219,14 +219,19 @@ void LogService::run() noexcept {
                 auto& queue=critical_.empty()?samples_:critical_;
                 record=std::move(queue.front());queue.pop_front();
             }
+            progress_.beat();
+            while(injection_&&injection_->active("storage-stall")&&!stop_wait_)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if((injection_&&injection_->active("storage-fail"))||(stop_wait_&&injection_&&injection_->active("storage-stall")))throw std::runtime_error("injected storage failure");
             record.sequence=log_.append(record);
             {std::lock_guard<std::mutex> lock(mutex_);recent_.push_back(std::move(record));
              const auto limit=std::min(size_t(256),log_.capacity());
              while(recent_.size()>limit)recent_.pop_front();}
+            progress_.idle();
         }
     }catch(...) {failed_=true;}
 }
 void LogService::close() {
+    stop_wait_=true;
     {std::lock_guard<std::mutex> lock(mutex_);closing_=true;cv_.notify_all();}
     if(worker_.joinable())worker_.join();
 }
@@ -236,3 +241,5 @@ std::pair<uint64_t,uint64_t> LogService::dropped(){std::lock_guard<std::mutex> l
 namespace vehicle {
 std::vector<LogRecord> LogService::history(){std::lock_guard<std::mutex> lock(mutex_);return {recent_.begin(),recent_.end()};}
 }
+
+namespace vehicle {size_t LogService::pending(){std::lock_guard<std::mutex> lock(mutex_);return critical_.size()+samples_.size();}}
