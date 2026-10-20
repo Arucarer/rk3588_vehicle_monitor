@@ -43,3 +43,5 @@ CONFIG_DHT11、CONFIG_INV_MPU6050_I2C、CONFIG_INV_MPU6050_SPI、CONFIG_CAN_ROCK
 ## 后续实板证据
 
 2026-10-20用户已通过SSH上传并在板端执行程序，版本命令及10秒显式模拟通过、退出码0。实测Buildroot2021.11、glibc2.37、Linux5.10.160，PID1为BusyBox；详见[实板冒烟报告](board-smoke-20261020.md)。上述No route to host为首次尝试结果，不代表当前连接仍失败；本轮证据来自用户粘贴的终端输出。
+
+第二轮实板报告已进一步确认运行内核CAN_ROCKCHIP/DHT11/MPU6050驱动关闭、CAN设备树禁用、板载IMU为SH3001；watchdog已active且nowayout=1。见[详细核对](board-detail-20261020.md)。这些是用户提供的运行证据，不再仅依赖本机.config推断。
