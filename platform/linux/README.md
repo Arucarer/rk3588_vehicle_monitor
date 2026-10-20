@@ -13,4 +13,4 @@
 | display/input | fbdev 或 DRM + evdev | LCD与触摸控制器、驱动及240×320方向确认 |
 | watchdog | Linux watchdog ioctl | 关键线程进度联锁、timeout/nowayout行为实测 |
 
-此目录当前只有适配合同，没有已完成的板级驱动。
+本目录保留硬件适配合同；第4阶段已在src/can_node.cpp实现SocketCAN用户态适配，其他真实板级设备尚未适配。SocketCAN物理链路未验证，详见docs/reports/stage4-validation.md。

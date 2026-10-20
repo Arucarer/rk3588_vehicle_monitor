@@ -30,6 +30,7 @@ class Diagnosis {
     uint64_t sequence_=0;
 public:
     void add(FaultRule rule);
+    void configure(FaultRule rule);
     // Missing, invalid, future or stale measurements immediately become sensor faults.
     std::vector<FaultEvent> evaluate(const std::map<std::string,Measurement>& inputs, Clock::time_point now);
     void acknowledge(const std::string& id);

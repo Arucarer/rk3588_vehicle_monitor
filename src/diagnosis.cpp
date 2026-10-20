@@ -11,6 +11,10 @@ void Diagnosis::add(FaultRule rule) {
     auto id=rule.id;
     entries_.emplace(id,Entry{rule,{id,FaultState::normal,Severity::normal,false},{},{}});
 }
+void Diagnosis::configure(FaultRule rule) {
+    rule.validate();auto& entry=entries_.at(rule.id);
+    entry.rule=std::move(rule);entry.active_since.reset();entry.clear_since.reset();
+}
 std::vector<FaultEvent> Diagnosis::evaluate(const std::map<std::string,Measurement>& inputs,Clock::time_point now) {
     if(last_ && now<*last_) throw std::invalid_argument("unordered diagnosis time");
     last_=now;

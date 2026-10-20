@@ -3,6 +3,7 @@
 #include "vehicle/acquisition.hpp"
 #include "vehicle/diagnosis.hpp"
 #include "vehicle/storage.hpp"
+#include "vehicle/communication.hpp"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -25,6 +26,9 @@ struct Options {
     size_t log_capacity = 256;
     unsigned sample_period_ms = 1000;
     vehicle::Config config;
+    std::string config_path, can_interface;
+    bool can_simulate=false, allow_remote_set=false;
+    std::optional<vehicle::NetworkConfig> network;
 };
 
 Options parse(int argc, char** argv) {
@@ -34,6 +38,17 @@ Options parse(int argc, char** argv) {
         if (arg == "--simulate") options.simulation = true;
         else if (arg == "--version") options.version = true;
         else if (arg == "--help") options.help = true;
+        else if (arg == "--can-simulate") options.can_simulate=true;
+        else if (arg == "--allow-remote-set") options.allow_remote_set=true;
+        else if (arg == "--can-interface" && i+1<argc) options.can_interface=argv[++i];
+        else if (arg == "--tcp" && i+1<argc) {
+            std::string endpoint=argv[++i];auto colon=endpoint.find(':');
+            if(colon==std::string::npos)throw std::invalid_argument("TCP endpoint must be IPv4:port");
+            std::string port=endpoint.substr(colon+1);size_t used=0;auto number=std::stoul(port,&used);
+            if(used!=port.size()||number<1||number>65535)throw std::invalid_argument("invalid TCP port");
+            vehicle::NetworkConfig net;net.address=endpoint.substr(0,colon);net.port=static_cast<uint16_t>(number);
+            net.validate();options.network=net;
+        }
         else if (arg == "--duration" && i + 1 < argc) {
             std::string value = argv[++i];
             size_t consumed = 0;
@@ -48,11 +63,14 @@ Options parse(int argc, char** argv) {
             if(arg=="--log-capacity")options.log_capacity=n;
             else options.sample_period_ms=static_cast<unsigned>(n);
         } else if (arg == "--config" && i + 1 < argc) {
-            options.config = vehicle::Config::load(argv[++i]);
+            options.config_path=argv[++i];
+            options.config = vehicle::Config::load(options.config_path);
         } else throw std::invalid_argument("unknown option or missing value: " + arg);
     }
     if (!std::isfinite(options.seconds) || options.seconds <= 0 || options.seconds > 86400)
         throw std::invalid_argument("duration must be greater than 0 and at most 86400 seconds");
+    if(options.can_simulate&&!options.can_interface.empty())throw std::invalid_argument("choose one CAN source");
+    if(options.allow_remote_set && options.config_path.empty())throw std::invalid_argument("remote writes require --config path");
     options.config.validate();
     return options;
 }
@@ -60,7 +78,8 @@ std::string config_id(const vehicle::Config& c, const Options& o) {
     std::ostringstream text;
     text << std::setprecision(17) << c.circumference_m << ',' << c.pulses_per_rev << ','
          << c.overspeed_kmh << ',' << c.hysteresis_kmh << ',' << c.stale_ms << ','
-         << o.sample_period_ms << ",stage2-demo-policy-v1";
+         << o.sample_period_ms << ",stage2-demo-policy-v1," << o.can_simulate << "," << o.can_interface;
+    if(o.network)text << ",tcp=" << o.network->address << ":" << o.network->port;
     auto bytes=text.str();
     return "v1-crc32:"+std::to_string(vehicle::crc32(
         reinterpret_cast<const uint8_t*>(bytes.data()),bytes.size()));
@@ -99,6 +118,8 @@ int main(int argc, char** argv) {
         if (options.help) {
             std::cout << "vehicle-monitor --simulate [--duration seconds] [--config path]\n"
                          "  [--log-file NEW_OR_EXISTING_NOR --log-capacity 256 --sample-period-ms 1000]\n"
+                         "  [--tcp IPv4:port] [--allow-remote-set --config path]\n"
+                         "  [--can-simulate | --can-interface can0]\n"
                          "vehicle-monitor --version\n";
             return 0;
         }
@@ -114,7 +135,7 @@ int main(int argc, char** argv) {
         std::ifstream boot_file("/proc/sys/kernel/random/boot_id");
         std::getline(boot_file,boot_id);
         if(boot_id.empty())throw std::runtime_error("cannot read Linux boot identifier");
-        const auto configuration=config_id(options.config,options);
+        auto configuration=config_id(options.config,options);
         if(!options.log_file.empty()) {
             struct stat st{};
             bool create=lstat(options.log_file.c_str(),&st)!=0;
@@ -126,7 +147,26 @@ int main(int argc, char** argv) {
                      <<" incomplete="<<recovery.incomplete<<'\n';
             log_service=std::make_unique<vehicle::LogService>(*persistent);
         }
-        vehicle::StateStore store;
+        vehicle::StateStore store, runtime_store;
+        vehicle::ParameterStore parameters(options.config,options.allow_remote_set?options.config_path:"");
+        vehicle::NodeManager simulated_nodes;
+        std::unique_ptr<vehicle::CanService> can;
+        if(!options.can_interface.empty())can=std::make_unique<vehicle::CanService>(options.can_interface);
+        std::unique_ptr<vehicle::TcpClient> network;
+        if(options.network)network=std::make_unique<vehicle::TcpClient>(*options.network,parameters,[&] {
+            const auto current=parameters.snapshot().config;
+            auto text="simulation=1\n"+vehicle::snapshot_text(store.snapshot(),vehicle::Clock::now(),
+                std::chrono::milliseconds(current.stale_ms));
+            text+="runtime\n"+vehicle::snapshot_text(runtime_store.snapshot(),vehicle::Clock::now(),std::chrono::milliseconds(500));
+            if(can || options.can_simulate) {
+                const auto nodes=can?can->nodes():simulated_nodes.snapshot();
+                text+=can?"can_source=socketcan\n":"can_source=simulation\n";
+                for(const auto& node:nodes)text+="can.node."+std::to_string(node.id)+
+                    "=online:"+std::to_string(node.online)+",seen:"+std::to_string(node.seen)+
+                    ",state:"+std::to_string(node.state)+",sequence:"+std::to_string(node.sequence)+"\n";
+            }
+            return text+"parameters\n"+vehicle::config_text(current);
+        });
         vehicle::BoundedQueue<std::string> logs(128);
         vehicle::HealthMonitor health;
         health.add("acquisition", std::chrono::milliseconds(500), vehicle::Clock::now());
@@ -172,6 +212,12 @@ int main(int argc, char** argv) {
             diagnosis.add({"tilt",15,2,true,false,vehicle::Severity::fault,100ms,200ms,500ms});
             diagnosis.add({"bus",30,2,false,false,vehicle::Severity::warning,100ms,200ms,500ms});
             diagnosis.add({"liquid",0.5,0.1,false,false,vehicle::Severity::fault,100ms,200ms,500ms});
+            if(can || options.can_simulate)for(const auto id:{1,2})
+                diagnosis.add({"node."+std::to_string(id),0.5,0,false,true,vehicle::Severity::fault,0ms,0ms,500ms});
+            if(network)diagnosis.add({"tcp",0.5,0,false,true,vehicle::Severity::warning,100ms,0ms,500ms});
+            uint64_t applied_revision=0;
+            uint16_t can_sequence=0;
+            auto simulation_start=vehicle::Clock::now(),next_can=simulation_start;
             const auto end = vehicle::Clock::now() + std::chrono::duration<double>(options.seconds);
             bool failed = false;
             auto next_sample=vehicle::Clock::now();
@@ -180,12 +226,37 @@ int main(int argc, char** argv) {
                     failed = true;
                     break;
                 }
+                const auto parameter_state=parameters.snapshot();
+                if(parameter_state.revision!=applied_revision) {
+                    const auto& c=parameter_state.config;
+                    diagnosis.configure({"speed",c.overspeed_kmh,c.hysteresis_kmh,false,false,
+                        vehicle::Severity::warning,100ms,200ms,std::chrono::milliseconds(c.stale_ms)});
+                    configuration=config_id(c,options);applied_revision=parameter_state.revision;
+                    if(log_service && !log_service->submit(record(vehicle::RecordType::diagnostic,
+                        "SIMULATION config_changed revision="+std::to_string(applied_revision)+" "+vehicle::config_text(c),
+                        boot_id,configuration),true))failed=true;
+                }
                 auto s = store.snapshot();
                 if (s.sequence) {
                     std::map<std::string,vehicle::Measurement> inputs{
                         {"speed",s.speed},{"tilt",s.pitch},
                         {"bus",s.analog.at("bus")},{"liquid",s.digital.at("liquid")}};
                     const auto now=vehicle::Clock::now();
+                    if(options.can_simulate) {
+                        if(now>=next_can) {
+                            simulated_nodes.receive(vehicle::heartbeat(1,can_sequence,0),now);
+                            auto elapsed=now-simulation_start;
+                            if(elapsed<3s || elapsed>=7s)simulated_nodes.receive(vehicle::heartbeat(2,can_sequence,0),now);
+                            ++can_sequence;next_can=now+1s;
+                        }
+                        simulated_nodes.expire(now);
+                    }
+                    if(can || options.can_simulate) {
+                        auto nodes=can?can->nodes():simulated_nodes.snapshot();
+                        for(const auto& node:nodes)inputs["node."+std::to_string(node.id)]={
+                            node.online?1.0:0.0,true,now,"bool",can?"socketcan":"simulation.can",0};
+                    }
+                    if(network)inputs["tcp"]={network->status().connected?1.0:0.0,true,now,"bool","tcp",0};
                     for(const auto& event:diagnosis.evaluate(inputs,now)) {
                         const std::string message="SIMULATION fault="+event.status.id+
                             " state="+std::to_string(static_cast<int>(event.status.state))+
@@ -201,6 +272,11 @@ int main(int argc, char** argv) {
                             sample_payload(s),boot_id,configuration),false);
                         next_sample=now+std::chrono::milliseconds(options.sample_period_ms);
                     }
+                    vehicle::Snapshot runtime;
+                    for(const auto& p:inputs)if(p.first=="tcp"||p.first.find("node.")==0)runtime.digital[p.first]=p.second;
+                    for(const auto& fault:diagnosis.statuses())runtime.digital["fault."+fault.id]={
+                        static_cast<double>(fault.state),true,now,"state","diagnosis",0};
+                    runtime_store.publish(std::move(runtime));
                     // Pure policy output: hardware GPIO is not accessed in simulation.
                     const auto alarm=vehicle::alarm_output(diagnosis.statuses(),now);
                     (void)alarm;
@@ -208,6 +284,12 @@ int main(int argc, char** argv) {
                 if(failed)break;
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
+            if(network) {
+                auto status=network->status();
+                std::cout<<"SIMULATION tcp_connections="<<status.connections<<" failures="<<status.failures
+                         <<" sent="<<status.sent<<" received="<<status.received<<'\n';
+            }
+            network.reset();
             running = false;
             acquisition.join();
             logs.close();

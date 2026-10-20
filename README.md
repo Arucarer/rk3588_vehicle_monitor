@@ -2,7 +2,7 @@
 
 以《基于RK3588B的车载智能监测与设备健康管理系统技术任务书.txt》为需求基线，面向正点原子 ATK-DLRK3588B 的 Linux/C++17 工程。
 
-当前交付：完成软件阶段1（工程基础）、阶段2（采集算法和多故障诊断）与阶段3（循环日志和导出），程序版本v0.1.0。详见[阶段计划](docs/roadmap.md)与[阶段2验证](docs/reports/stage2-validation.md)。实板驱动、LVGL、真实CAN/TCP收发、W25Q128实板持久化及完整系统验收尚未完成。仿真不能替代硬件验收。
+当前交付：完成软件阶段1（工程基础）、阶段2（采集算法和多故障诊断）、阶段3（循环日志和导出）与阶段4（CAN节点管理和TCP通信），程序版本v0.1.0。详见[阶段计划](docs/roadmap.md)与[阶段2验证](docs/reports/stage2-validation.md)。实板驱动、LVGL、CAN物理链路与板端TCP验证、W25Q128实板持久化及完整系统验收尚未完成。仿真不能替代硬件验收。
 
 ## 本机运行
 
@@ -13,6 +13,17 @@
 ```
 
 Ctrl+C/SIGTERM 可优雅退出。演示产生交替60/90 km/h的明确模拟数据，新增合成姿态、母线与液位异常场景；温湿度保持无效。不指定日志文件时只输出stdout；使用 `--log-file` 可启用文件模拟NOR循环日志，不代表已写入Flash。关键与普通队列分别有界，关键溢出或写失败使程序非零退出。详见[日志运行与导出](docs/storage.md)。
+
+## 通信演示
+
+```sh
+# 终端1
+python3 tools/monitor_server.py --port 9000 --duration 60
+# 终端2
+./build/vehicle-monitor --simulate --can-simulate --duration 30 --tcp 127.0.0.1:9000
+```
+
+远程参数默认只读；显式开启写入和SocketCAN测试方法见[通信说明](docs/communication.md)。CAN节点与TCP在线状态进入诊断；不缓存离线网络告警。
 
 ## 交叉编译
 
@@ -32,7 +43,7 @@ cmake --build build-rk -j2
 - `include/vehicle/`、`src/`：快照、队列、配置、诊断、协议及模拟运行管理。
 - `platform/linux/`、`gui/`：设备访问合同与LVGL移植计划。
 - `config/`、`cmake/`、`deploy/`：配置、工具链及部署边界。
-- `protocols/`、`tests/`：协议草案及主机测试。
+- `protocols/`、`tests/`：已实现的台架协议及主机测试；见[通信联调](docs/communication.md)。
 - `scripts/board_probe.sh`：板端只读环境探测。
 - [可行性报告](docs/feasibility.md)、[架构与待办](docs/architecture.md)、[接口冻结表](docs/hardware/interfaces.csv)、[验收矩阵](docs/acceptance.csv)。
 
