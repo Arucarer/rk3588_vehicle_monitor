@@ -1,0 +1,16 @@
+/build*/
+/out/
+*.o
+*.O
+*.elf
+*.bin
+*.hex
+__pycache__/
+*.log
+/moni_traffic.rar
+
+# Local STM32 reference archive; not used by the Linux build
+/moni_traffic/
+/.vscode/
+
+/Testing/
