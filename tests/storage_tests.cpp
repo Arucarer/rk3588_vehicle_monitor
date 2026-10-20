@@ -89,7 +89,7 @@ int main(){try {
     bool rejected=false;try{CircularLog invalid(header,4);}catch(...){rejected=true;}check(rejected,"bad header accepted");
 
     auto async_medium=std::make_shared<MemoryNor>(32);CircularLog async_log(async_medium,32,true);
-    {LogService service(async_log,32,32);for(int i=0;i<20;++i)check(service.submit(record(),i%2==0),"async rejected");service.close();check(!service.failed(),"async failure");check(!service.submit(record(),true),"accepted after close");}
+    {LogService service(async_log,32,32);for(int i=0;i<20;++i)check(service.submit(record(),i%2==0),"async rejected");service.close();check(!service.failed(),"async failure");check(service.history().size()==20&&service.history().back().sequence==20,"committed GUI history");check(!service.submit(record(),true),"accepted after close");}
     check(async_log.records().size()==20,"close did not drain");
     auto gated=std::make_shared<GatedNor>();CircularLog gated_log(gated,8,true);
     gated->armed=true;

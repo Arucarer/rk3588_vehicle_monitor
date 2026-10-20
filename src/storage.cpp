@@ -195,7 +195,11 @@ void export_jsonl(const std::vector<LogRecord>& records,const std::string& path)
     } catch(...) {::close(fd);throw;}
 }
 LogService::LogService(CircularLog& log,size_t critical,size_t samples):log_(log),critical_capacity_(critical),sample_capacity_(samples) {
-    require(critical>0 && samples>0,"zero log queue capacity");worker_=std::thread(&LogService::run,this);
+    require(critical>0 && samples>0,"zero log queue capacity");
+    auto initial=log.records();
+    auto begin=initial.size()>256?initial.end()-256:initial.begin();
+    recent_.assign(begin,initial.end());
+    worker_=std::thread(&LogService::run,this);
 }
 LogService::~LogService(){close();}
 bool LogService::submit(LogRecord r,bool critical) {
@@ -215,7 +219,10 @@ void LogService::run() noexcept {
                 auto& queue=critical_.empty()?samples_:critical_;
                 record=std::move(queue.front());queue.pop_front();
             }
-            log_.append(std::move(record));
+            record.sequence=log_.append(record);
+            {std::lock_guard<std::mutex> lock(mutex_);recent_.push_back(std::move(record));
+             const auto limit=std::min(size_t(256),log_.capacity());
+             while(recent_.size()>limit)recent_.pop_front();}
         }
     }catch(...) {failed_=true;}
 }
@@ -224,4 +231,8 @@ void LogService::close() {
     if(worker_.joinable())worker_.join();
 }
 std::pair<uint64_t,uint64_t> LogService::dropped(){std::lock_guard<std::mutex> lock(mutex_);return {dropped_critical_,dropped_samples_};}
+}
+
+namespace vehicle {
+std::vector<LogRecord> LogService::history(){std::lock_guard<std::mutex> lock(mutex_);return {recent_.begin(),recent_.end()};}
 }

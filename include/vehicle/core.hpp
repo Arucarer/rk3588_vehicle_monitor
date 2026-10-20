@@ -24,6 +24,7 @@ template<class T> class BoundedQueue {
  explicit BoundedQueue(size_t capacity):capacity_(capacity) { if(!capacity) throw std::invalid_argument("zero queue capacity"); }
  bool push(T value) { std::lock_guard<std::mutex> l(mutex_); if(closed_) return false; if(queue_.size()==capacity_) { ++dropped_; return false; } queue_.push_back(std::move(value)); cv_.notify_one(); return true; }
  std::optional<T> pop() { std::unique_lock<std::mutex> l(mutex_); cv_.wait(l,[&]{return closed_ || !queue_.empty();}); if(queue_.empty()) return {}; auto v=std::move(queue_.front()); queue_.pop_front(); return v; }
+ std::optional<T> try_pop() { std::lock_guard<std::mutex> l(mutex_); if(queue_.empty())return {}; auto value=std::move(queue_.front());queue_.pop_front();return value; }
  void close() { std::lock_guard<std::mutex> l(mutex_); closed_=true; cv_.notify_all(); }
  uint64_t dropped() { std::lock_guard<std::mutex> l(mutex_); return dropped_; }
 };

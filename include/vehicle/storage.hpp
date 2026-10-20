@@ -58,7 +58,7 @@ class LogService {
     CircularLog& log_;
     std::mutex mutex_;
     std::condition_variable cv_;
-    std::deque<LogRecord> critical_, samples_;
+    std::deque<LogRecord> critical_, samples_, recent_;
     size_t critical_capacity_, sample_capacity_;
     bool closing_=false;
     std::atomic<bool> failed_{false};
@@ -72,5 +72,6 @@ public:
     void close();
     bool failed() const { return failed_; }
     std::pair<uint64_t,uint64_t> dropped();
+    std::vector<LogRecord> history();
 };
 }

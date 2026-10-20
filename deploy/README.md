@@ -8,3 +8,5 @@
 阶段3新增vehicle-log-export工具；应用可用--log-file启用明确标识的文件模拟NOR。持久化路径需位于可写文件系统且容量充足，不得指向MTD或其他设备节点。历史导出前先停止应用。格式和用法见../docs/storage.md。
 
 阶段4通信为显式启用：--tcp IPv4:port、--can-simulate或--can-interface IFACE。默认不改网络/总线配置，参数默认只读；远程写参数须显式指定独立配置文件。Python工具安装至share/vehicle-monitor/tools。完整自启动与健康联锁留待第6阶段。
+
+阶段5默认构建LVGL8.2与中文字体。主机可--gui运行SDL窗口，ARM64当前只提供--gui-headless离屏后端，真实显示输入未适配。可用-DVEHICLE_BUILD_GUI=OFF裁剪图形代码。LVGL及字体许可安装至share/vehicle-monitor/licenses。

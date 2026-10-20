@@ -4,6 +4,9 @@
 #include "vehicle/diagnosis.hpp"
 #include "vehicle/storage.hpp"
 #include "vehicle/communication.hpp"
+#ifdef VEHICLE_BUILD_GUI
+#include "vehicle/gui.hpp"
+#endif
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -28,6 +31,8 @@ struct Options {
     vehicle::Config config;
     std::string config_path, can_interface;
     bool can_simulate=false, allow_remote_set=false;
+    bool gui=false, gui_headless=false;
+    std::string gui_capture;
     std::optional<vehicle::NetworkConfig> network;
 };
 
@@ -38,6 +43,9 @@ Options parse(int argc, char** argv) {
         if (arg == "--simulate") options.simulation = true;
         else if (arg == "--version") options.version = true;
         else if (arg == "--help") options.help = true;
+        else if (arg == "--gui") options.gui=true;
+        else if (arg == "--gui-headless") {options.gui=true;options.gui_headless=true;}
+        else if (arg == "--gui-capture" && i+1<argc) options.gui_capture=argv[++i];
         else if (arg == "--can-simulate") options.can_simulate=true;
         else if (arg == "--allow-remote-set") options.allow_remote_set=true;
         else if (arg == "--can-interface" && i+1<argc) options.can_interface=argv[++i];
@@ -71,6 +79,10 @@ Options parse(int argc, char** argv) {
         throw std::invalid_argument("duration must be greater than 0 and at most 86400 seconds");
     if(options.can_simulate&&!options.can_interface.empty())throw std::invalid_argument("choose one CAN source");
     if(options.allow_remote_set && options.config_path.empty())throw std::invalid_argument("remote writes require --config path");
+    if(!options.gui_capture.empty()&&!options.gui)throw std::invalid_argument("capture requires --gui or --gui-headless");
+#ifndef VEHICLE_BUILD_GUI
+    if(options.gui)throw std::invalid_argument("GUI was disabled at build time");
+#endif
     options.config.validate();
     return options;
 }
@@ -120,6 +132,7 @@ int main(int argc, char** argv) {
                          "  [--log-file NEW_OR_EXISTING_NOR --log-capacity 256 --sample-period-ms 1000]\n"
                          "  [--tcp IPv4:port] [--allow-remote-set --config path]\n"
                          "  [--can-simulate | --can-interface can0]\n"
+                         "  [--gui | --gui-headless] [--gui-capture NEW_PPM]\n"
                          "vehicle-monitor --version\n";
             return 0;
         }
@@ -167,6 +180,14 @@ int main(int argc, char** argv) {
             }
             return text+"parameters\n"+vehicle::config_text(current);
         });
+#ifdef VEHICLE_BUILD_GUI
+        vehicle::GuiStateStore gui_states;
+        vehicle::BoundedQueue<bool> gui_acknowledgments(8);
+        std::unique_ptr<vehicle::GuiService> gui;
+        if(options.gui)gui=std::make_unique<vehicle::GuiService>(gui_states,parameters,
+            [&]{return gui_acknowledgments.push(true);},options.gui_headless,options.gui_capture);
+        std::deque<vehicle::LogRecord> live_history;
+#endif
         vehicle::BoundedQueue<std::string> logs(128);
         vehicle::HealthMonitor health;
         health.add("acquisition", std::chrono::milliseconds(500), vehicle::Clock::now());
@@ -226,6 +247,16 @@ int main(int argc, char** argv) {
                     failed = true;
                     break;
                 }
+#ifdef VEHICLE_BUILD_GUI
+                if(gui&&gui->failed()){failed=true;break;}
+                if(gui&&gui->finished())break;
+                while(gui_acknowledgments.try_pop()) {
+                    for(const auto& fault:diagnosis.statuses())if(fault.state==vehicle::FaultState::fault||fault.state==vehicle::FaultState::warning)
+                        diagnosis.acknowledge(fault.id);
+                    if(log_service && !log_service->submit(record(vehicle::RecordType::diagnostic,
+                        "SIMULATION alarms_acknowledged",boot_id,configuration),true))failed=true;
+                }
+#endif
                 const auto parameter_state=parameters.snapshot();
                 if(parameter_state.revision!=applied_revision) {
                     const auto& c=parameter_state.config;
@@ -264,6 +295,11 @@ int main(int argc, char** argv) {
                             " acknowledged="+std::to_string(event.status.acknowledged)+
                             " event="+std::to_string(event.sequence);
                         logs.push(message);
+#ifdef VEHICLE_BUILD_GUI
+                        auto history_event=record(vehicle::RecordType::fault,message,boot_id,configuration);
+                        history_event.sequence=event.sequence;live_history.push_back(std::move(history_event));
+                        if(live_history.size()>128)live_history.pop_front();
+#endif
                         if(log_service && !log_service->submit(record(vehicle::RecordType::fault,
                             message,boot_id,configuration),true))failed=true;
                     }
@@ -280,10 +316,25 @@ int main(int argc, char** argv) {
                     // Pure policy output: hardware GPIO is not accessed in simulation.
                     const auto alarm=vehicle::alarm_output(diagnosis.statuses(),now);
                     (void)alarm;
+#ifdef VEHICLE_BUILD_GUI
+                    if(gui) {
+                        vehicle::GuiState view;view.updated=now;view.sensors=s;view.faults=diagnosis.statuses();
+                        view.config=parameter_state.config;view.settings_writable=options.allow_remote_set;
+                        view.can_enabled=bool(can)||options.can_simulate;
+                        if(view.can_enabled)view.nodes=can?can->nodes():simulated_nodes.snapshot();
+                        view.network_enabled=bool(network);if(network)view.network=network->status();
+                        view.persistent_history=bool(log_service);
+                        view.history=log_service?log_service->history():std::vector<vehicle::LogRecord>(live_history.begin(),live_history.end());
+                        gui_states.publish(std::move(view));
+                    }
+#endif
                 }
                 if(failed)break;
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
+#ifdef VEHICLE_BUILD_GUI
+            if(gui){gui->close();failed=failed||gui->failed();gui.reset();}
+#endif
             if(network) {
                 auto status=network->status();
                 std::cout<<"SIMULATION tcp_connections="<<status.connections<<" failures="<<status.failures
